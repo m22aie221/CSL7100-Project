@@ -1,0 +1,22 @@
+# Data (very important)
+data/
+*.parquet
+*.json
+
+# Spark temp files
+spark-temp/
+hdfs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Env
+.env
+
+# OS
+.DS_Store
+
