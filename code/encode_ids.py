@@ -1,35 +1,27 @@
-#core processing stage before graph model. reviewerId and asin string but GraphX needs numbers.
-# encode_ids.py
-
-from pyspark.sql.functions import monotonically_increasing_id
+from pyspark.sql.window import Window
+from pyspark.sql.functions import dense_rank
 from config import PATHS
 from etl import create_spark_session
 
 
 def encode_ids(spark, df):
-    """
-    Encode user and item IDs to numeric values
-    """
 
-    # -------------------------
     # Encode Users
-    # -------------------------
+    user_window = Window.orderBy("reviewerID")
+
     users = df.select("reviewerID").distinct() \
-              .withColumn("user_id", monotonically_increasing_id())
+        .withColumn("user_id", dense_rank().over(user_window))
 
     df = df.join(users, on="reviewerID", how="inner")
 
-    # -------------------------
     # Encode Items
-    # -------------------------
+    item_window = Window.orderBy("asin")
+
     items = df.select("asin").distinct() \
-              .withColumn("item_id", monotonically_increasing_id())
+        .withColumn("item_id", dense_rank().over(item_window))
 
     df = df.join(items, on="asin", how="inner")
 
-    # -------------------------
-    # Select final columns
-    # -------------------------
     df = df.select("user_id", "item_id", "overall", "unixReviewTime")
 
     return df
@@ -41,16 +33,13 @@ def run_encoding():
     input_path = PATHS["parquet"] + "/5core"
     output_path = PATHS["parquet"] + "/encoded"
 
-    print(f"📥 Loading: {input_path}")
     df = spark.read.parquet(input_path)
 
     df_encoded = encode_ids(spark, df)
 
-    print(f"💾 Saving: {output_path}")
     df_encoded.write.mode("overwrite").parquet(output_path)
 
     print("✅ ID Encoding Completed")
-
     spark.stop()
 
 

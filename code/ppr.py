@@ -1,70 +1,10 @@
-from pyspark.sql.functions import col, lit, sum as spark_sum
+from pyspark.sql.functions import col, lit, sum as spark_sum, abs as spark_abs
 
 
-def personalized_pagerank_old(spark, vertices, edges, source_id, alpha=0.15, max_iter=10):
+def personalized_pagerank(spark, vertices, edges, source_id, alpha=0.15, max_iter=20, tol=1e-6):
     """
-    Compute Personalized PageRank using DataFrame API
+    Optimized Personalized PageRank
     """
-
-    # -------------------------
-    # Step 1: Initialize ranks
-    # -------------------------
-    ranks = vertices.withColumn(
-        "rank",
-        lit(1.0 if False else 0.0)  # placeholder
-    )
-
-    # Set source node rank = 1
-    ranks = ranks.withColumn(
-        "rank",
-        col("id").cast("long")
-    ).withColumn(
-        "rank",
-        (col("id") == source_id).cast("double")
-    )
-
-    # -------------------------
-    # Iterative updates
-    # -------------------------
-    for i in range(max_iter):
-        print(f"Iteration {i+1}")
-
-        # Join edges with ranks
-        contribs = edges.join(
-            ranks,
-            edges.src == ranks.id,
-            "inner"
-        ).select(
-            col("dst"),
-            (col("rank") * col("weight")).alias("contrib")
-        )
-
-        # Aggregate contributions
-        new_ranks = contribs.groupBy("dst").agg(
-            spark_sum("contrib").alias("rank")
-        )
-
-        # Apply damping
-        new_ranks = new_ranks.withColumn(
-            "rank",
-            (1 - alpha) * col("rank") + alpha * lit(0.0)
-        )
-
-        # Add teleport to source node
-        new_ranks = new_ranks.withColumn(
-            "rank",
-            col("rank") + alpha * (col("dst") == source_id).cast("double")
-        )
-
-        # Rename for next iteration
-        ranks = new_ranks.withColumnRenamed("dst", "id")
-
-    return ranks
-
-from pyspark.sql.functions import col, lit, sum as spark_sum
-
-
-def personalized_pagerank(spark, vertices, edges, source_id, alpha=0.15, max_iter=10):
 
     # -------------------------
     # Step 1: Initialize ranks
@@ -75,7 +15,9 @@ def personalized_pagerank(spark, vertices, edges, source_id, alpha=0.15, max_ite
     )
 
     for i in range(max_iter):
-        print(f"Iteration {i+1}")
+        print(f"🔁 Iteration {i+1}")
+
+        ranks = ranks.cache()
 
         # -------------------------
         # Step 2: Contributions
@@ -99,17 +41,14 @@ def personalized_pagerank(spark, vertices, edges, source_id, alpha=0.15, max_ite
         # -------------------------
         # Step 4: Keep ALL nodes
         # -------------------------
-        new_ranks = vertices.select(col("id")).join(
+        new_ranks = vertices.select("id").join(
             agg,
             vertices.id == agg.dst,
             "left"
         ).select(
             vertices.id,
             col("rank")
-        )
-
-        # Fill missing with 0
-        new_ranks = new_ranks.fillna(0.0)
+        ).fillna(0.0)
 
         # -------------------------
         # Step 5: Apply damping
@@ -120,13 +59,29 @@ def personalized_pagerank(spark, vertices, edges, source_id, alpha=0.15, max_ite
         )
 
         # -------------------------
-        # Step 6: Add teleport
+        # Step 6: Teleport to source
         # -------------------------
         new_ranks = new_ranks.withColumn(
             "rank",
             col("rank") + alpha * (col("id") == source_id).cast("double")
         )
 
+        # -------------------------
+        # Step 7: Convergence check
+        # -------------------------
+        diff = new_ranks.join(
+            ranks.withColumnRenamed("rank", "prev_rank"),
+            "id"
+        ).select(
+            spark_abs(col("rank") - col("prev_rank")).alias("diff")
+        ).agg({"diff": "max"}).collect()[0][0]
+
+        print(f"Max diff: {diff}")
+
         ranks = new_ranks
+
+        if diff < tol:
+            print("✅ Converged")
+            break
 
     return ranks
