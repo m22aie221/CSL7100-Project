@@ -60,7 +60,22 @@ PROJECT_ROOT=/mnt/d/IITJ/Course/sem7/BigData/Project
 All data paths are dynamically resolved in `config.py`, ensuring compatibility across different machines.
 
 ---
-
+RAW DATA
+   ↓
+ETL (clean)
+   ↓
+ENCODE (user_id, item_id)
+   ↓
+SPLIT (train/test)
+   ↓
+SAVE
+   ↓
+5-core (train only)
+   ↓
+Graph + PPR
+   ↓
+Evaluation (test)
+------
 # 🧠 Summary
 
 The project separates code and data storage to support large datasets, improve reproducibility, and enable seamless collaboration across different system configurations.
