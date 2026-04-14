@@ -2,6 +2,7 @@ from pyspark.sql.functions import col
 from config import PATHS
 from etl import create_spark_session
 
+
 def estimate_optimal_k(df, spark, k_values=[2,3,4,5], sample_frac=0.3):
     print("\n🔍 Estimating optimal k...")
 
@@ -43,37 +44,23 @@ def estimate_optimal_k(df, spark, k_values=[2,3,4,5], sample_frac=0.3):
 # Improve Spark Performance 
 def filter_k_core_optimized(spark, df, k=5, max_iter=10):
 
-    spark.sparkContext.setCheckpointDir(PATHS["checkpoint"])
-
-    df = df.repartition(100).cache()
-
-    prev_count = -1
-
+    spark.sparkContext.setCheckpointDir("/tmp/spark-checkpoints")
+    df = df.repartition(32)
     for i in range(max_iter):
         print(f"\n🔁 Iteration {i+1}")
 
-        curr_count = df.count()
-        print(f"Records before filtering: {curr_count}")
-
-        if curr_count == prev_count:
-            print("✅ Converged")
-            break
-
-        prev_count = curr_count
-
-        # ✅ Filter users (NO JOIN)
+        # Filter users
         user_counts = df.groupBy("reviewerID").count()
-        valid_users = [row["reviewerID"] for row in user_counts.filter(col("count") >= k).collect()]
+        valid_users = user_counts.filter(col("count") >= k).select("reviewerID")
+        df = df.join(valid_users, on="reviewerID", how="inner")
 
-        df = df.filter(col("reviewerID").isin(valid_users))
-
-        # ✅ Filter items (NO JOIN)
+        # Filter items
         item_counts = df.groupBy("asin").count()
-        valid_items = [row["asin"] for row in item_counts.filter(col("count") >= k).collect()]
+        valid_items = item_counts.filter(col("count") >= k).select("asin")
+        df = df.join(valid_items, on="asin", how="inner")
 
-        df = df.filter(col("asin").isin(valid_items))
-
-        df = df.checkpoint().cache()
+        # Break lineage
+        df = df.checkpoint()
 
     return df
     

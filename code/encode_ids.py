@@ -3,8 +3,29 @@ from pyspark.sql.functions import dense_rank
 from config import PATHS
 from etl import create_spark_session
 
+from pyspark.sql.functions import monotonically_increasing_id, broadcast
+
 
 def encode_ids(spark, df):
+
+    df = df.repartition(32, "reviewerID")
+
+    # Users
+    users = df.select("reviewerID").distinct() \
+        .withColumn("user_id", monotonically_increasing_id())
+
+    # Items
+    items = df.select("asin").distinct() \
+        .withColumn("item_id", monotonically_increasing_id())
+
+    # Join (broadcast for speed)
+    df = df.join(broadcast(users), on="reviewerID")
+    df = df.join(broadcast(items), on="asin")
+
+    return df.select("user_id", "item_id", "overall", "unixReviewTime")
+
+
+def encode_ids_old(spark, df):
 
     # Encode Users
     user_window = Window.orderBy("reviewerID")
