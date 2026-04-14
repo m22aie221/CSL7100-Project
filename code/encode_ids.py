@@ -37,8 +37,14 @@ def run_encoding():
 
     df_encoded = encode_ids(spark, df)
 
-    df_encoded.write.mode("overwrite").parquet(output_path)
+    #df_encoded.write.mode("overwrite").parquet(output_path)
 
+    if df_encoded.count() > 0:
+        df_encoded.coalesce(10).write.mode("overwrite").parquet(PATHS["parquet"] + "/encoded")
+        print("✅ Encoded saved")
+    else:
+        print("❌ Encoding produced empty dataframe")
+    
     print("✅ ID Encoding Completed")
     spark.stop()
 

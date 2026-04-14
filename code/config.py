@@ -4,7 +4,7 @@ import os
 # 🔧 User Config
 # -----------------------------------
 
-PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/home/suvendu/mlbd/project1/CSL7100-Project")
+PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/mnt/d/IITJ/Course/sem7/BigData/Project")
 
 USE_HDFS = False  # os.getenv("USE_HDFS", "false").lower() == "true"
 

@@ -93,10 +93,11 @@ def run_graph_builder():
 
     vertices, edges = build_graph(spark, df)
 
-    print("💾 Saving vertices...")
-    vertices.write.mode("overwrite").parquet(vertex_path)
 
-    print("💾 Saving edges...")
+    print("💾 Saving vertices...: ", vertices.count())
+    vertices.coalesce(10).write.mode("overwrite").parquet(vertex_path)
+
+    print("💾 Saving edges...: ", edges.count())
     edges.write.mode("overwrite").parquet(edge_path)
 
     print("✅ Graph Construction Completed")
