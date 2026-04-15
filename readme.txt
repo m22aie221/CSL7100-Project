@@ -84,3 +84,16 @@ The project separates code and data storage to support large datasets, improve r
 
 nano ~/.bashrc
 export PROJECT_ROOT=/mnt/d/IITJ/Course/sem7/BigData/Project
+
+jps
+hdfs dfs -ls /
+ 
+
+hdfs dfs -mkdir -p /project/raw
+hdfs dfs -mkdir -p /project/checkpoints
+hdfs dfs -mkdir -p /project/parquet
+hdfs dfs -mkdir -p /project/parquet/5core
+hdfs dfs -mkdir -p /project/parquet/encoded
+hdfs dfs -mkdir -p /project/parquet/graph
+
+hdfs dfs -put /mnt/d/IITJ/Course/sem7/BigData/Project/raw/* /project/raw/

@@ -58,7 +58,14 @@ def create_spark_session(app_name="RecommenderGraph-ETL"):
     builder = SparkSession.builder.appName(app_name)
 
     if USE_HDFS:
-        builder = builder.config("spark.hadoop.fs.defaultFS", "hdfs://localhost:9000")
+        builder = (
+            builder
+            .master("local[6]")  # use 6 cores, leave 2 for system
+            .config("spark.hadoop.fs.defaultFS", "hdfs://localhost:9000")
+            .config("spark.driver.memory", "3g")
+            .config("spark.executor.memory", "3g")
+            .config("spark.sql.shuffle.partitions", "48")
+        )
         print("🚀 Running in HDFS mode")
     else:
         builder = (
