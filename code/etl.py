@@ -122,9 +122,26 @@ def save_as_parquet(df):
     df.write.mode("overwrite").parquet(output_path)
 
 
+def inspect_raw_data(spark):
+    input_path = PATHS["raw"]
+    print(f"📥 Loading full data from: {input_path}")
+
+    # Load without schema → infers full schema
+    df = spark.read.json(input_path)
+
+    print("\n📌 Full Schema:")
+    df.printSchema()
+
+    print("\n📌 Sample Records (3 rows):")
+    df.show(3, truncate=False)
+
+    return df
+
 def run_etl():
     spark = create_spark_session()
 
+    inspect_raw_data(spark)
+    
     df = load_raw_data(spark)
     df = select_relevant_columns(df)
     df = clean_data(df)
