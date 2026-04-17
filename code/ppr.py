@@ -149,7 +149,111 @@ def personalized_pagerank_optimized(
 
     return ranks, top_items
 
-    
+
+from pyspark.sql.functions import col, abs as spark_abs, sum as spark_sum, max as spark_max
+from pyspark.sql.functions import broadcast
+from pyspark.storagelevel import StorageLevel
+
+def personalized_pagerank_optimized_test(
+    spark,
+    vertices,
+    edges,
+    source_id,
+    alpha=0.15,
+    max_iter=10,
+    tol=1e-4,
+    top_n=10
+):
+    print("🚀 Starting Personalized PageRank")
+
+    # -------------------------
+    # IMPORTANT: Assume edges already bidirectional + normalized
+    # -------------------------
+
+    # Cache once (outside loop ideally)
+    vertices = vertices.select("id", "type").cache()
+    edges = edges.select("src", "dst", "weight").cache()
+
+    vertices.count()
+    edges.count()
+
+    # -------------------------
+    # Initialize ranks
+    # -------------------------
+    ranks = vertices.select("id").withColumn(
+        "rank",
+        (col("id") == source_id).cast("double")
+    )
+
+    print(f"🎯 Source user: {source_id}")
+
+    # -------------------------
+    # Iterations
+    # -------------------------
+    for i in range(max_iter):
+        print(f"\n🔁 Iteration {i+1}")
+
+        # Contributions
+        contribs = edges.join(
+            broadcast(ranks),
+            edges.src == ranks.id
+        ).select(
+            col("dst").alias("id"),
+            (col("rank") * col("weight")).alias("contrib")
+        )
+
+        # Aggregate
+        agg = contribs.groupBy("id").agg(
+            spark_sum("contrib").alias("rank")
+        )
+
+        # Join with all nodes
+        new_ranks = vertices.select("id").join(
+            agg,
+            "id",
+            "left"
+        ).fillna(0.0)
+
+        # Damping + teleport
+        new_ranks = new_ranks.withColumn(
+            "rank",
+            (1 - alpha) * col("rank") +
+            alpha * (col("id") == source_id).cast("double")
+        )
+
+        # -------------------------
+        # Convergence check (FIXED)
+        # -------------------------
+        diff = new_ranks.join(
+            ranks.withColumnRenamed("rank", "prev_rank"),
+            "id"
+        ).select(
+            spark_abs(col("rank") - col("prev_rank")).alias("diff")
+        )
+
+        max_diff = diff.agg(spark_max("diff")).first()[0]
+
+        print(f"Max diff: {max_diff}")
+
+        # Move to next iteration
+        ranks = new_ranks
+
+        if max_diff < tol:
+            print("✅ Converged")
+            break
+
+    # -------------------------
+    # Extract recommendations
+    # -------------------------
+    print("\n🎯 Extracting Top-N recommendations")
+
+    recommendations = ranks.join(vertices, "id")
+
+    top_items = recommendations.filter(
+        col("type") == "item"
+    ).orderBy(col("rank").desc()).limit(top_n)
+
+    return ranks, top_items
 
 def personalized_pagerank(spark, vertices, edges, source_id, alpha=0.15, max_iter=20, tol=1e-6):
     """
