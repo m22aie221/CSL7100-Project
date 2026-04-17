@@ -3,6 +3,89 @@ from pyspark.sql.window import Window
 from config import PATHS
 from etl import create_spark_session
 
+from pyspark.sql.functions import col, collect_list
+from pyspark.sql.functions import max as spark_max
+
+def build_graph_node2vec(df):
+    """
+    Build adjacency list for Node2Vec (random walks)
+    """
+
+    # -------------------------
+    # Step 1: Get max user_id
+    # -------------------------
+    max_user_id = df.agg(spark_max("user_id")).collect()[0][0]
+    print(f"Max user_id: {max_user_id}")
+
+    # -------------------------
+    # Step 2: Shift item IDs
+    # -------------------------
+    df = df.withColumn(
+        "item_id_shifted",
+        col("item_id") + max_user_id + 1
+    )
+
+    # -------------------------
+    # Step 3: Create edges (NO WEIGHT)
+    # -------------------------
+    edges = df.select(
+        col("user_id").alias("src"),
+        col("item_id_shifted").alias("dst")
+    )
+
+    # -------------------------
+    # Step 4: Make bidirectional
+    # -------------------------
+    reverse_edges = edges.select(
+        col("dst").alias("src"),
+        col("src").alias("dst")
+    )
+
+    edges = edges.union(reverse_edges)
+
+    # -------------------------
+    # Step 5: Build adjacency list
+    # -------------------------
+    adj = edges.groupBy("src").agg(
+        collect_list("dst").alias("neighbors")
+    )
+
+    print(f"Adjacency nodes: {adj.count()}")
+
+    return adj, max_user_id
+
+
+import random
+
+def generate_walks(adj_df, num_walks=5, walk_length=10):
+
+    adj_dict = {
+        row["src"]: row["neighbors"]
+        for row in adj_df.collect()
+    }
+
+    walks = []
+
+    for node in adj_dict.keys():
+        for _ in range(num_walks):
+
+            walk = [str(node)]
+            current = node
+
+            for _ in range(walk_length - 1):
+
+                neighbors = adj_dict.get(current, [])
+
+                if not neighbors:
+                    break
+
+                current = random.choice(neighbors)
+                walk.append(str(current))
+
+            walks.append(walk)
+
+    return walks
+    
 
 def build_graph(spark, df):
     """
@@ -81,15 +164,10 @@ def build_graph(spark, df):
     return vertices, edges
 
 
-def run_graph_builder():
-    spark = create_spark_session()
+def run_graph_builder(spark, df, max_user_id, mode='train'):
 
-    input_path = PATHS["parquet"] + "/encoded"
-    vertex_path = PATHS["graph"] + "/vertices"
-    edge_path = PATHS["graph"] + "/edges"
-
-    print(f"📥 Loading: {input_path}")
-    df = spark.read.parquet(input_path)
+    vertex_path = PATHS["graph"] + "/vertices/" + mode
+    edge_path = PATHS["graph"] + "/edges/" + mode
 
     vertices, edges = build_graph(spark, df)
 
@@ -99,9 +177,17 @@ def run_graph_builder():
     print("💾 Saving edges...")
     edges.write.mode("overwrite").parquet(edge_path)
 
+    print(f"✅ Graph Construction Completed for {mode}")
+
     print("✅ Graph Construction Completed")
-    spark.stop()
+    #spark.stop()
 
 
 if __name__ == "__main__":
-    run_graph_builder()
+    spark = create_spark_session()
+    df = spark.read.parquet(PATHS["parquet"] + "/encoded")
+
+    max_user_id = df.agg(spark_max("user_id")).collect()[0][0]
+
+    run_graph_builder(spark, df, max_user_id, mode='train')
+    #run_graph_builder()
