@@ -2,7 +2,7 @@ from pyspark.sql.window import Window
 from pyspark.sql.functions import dense_rank
 from config import PATHS
 from etl import create_spark_session
-
+from pyspark.ml.feature import StringIndexer
 
 def encode_ids(spark, df):
 
@@ -27,6 +27,37 @@ def encode_ids(spark, df):
     return df
 
 
+
+def encode_ids_new(spark, df):
+
+    print("🔢 Encoding user_id and item_id...")
+
+    # Encode Users
+    user_indexer = StringIndexer(
+        inputCol="user_id",
+        outputCol="user_idx",
+        handleInvalid="skip"
+    )
+
+    # Encode Items
+    item_indexer = StringIndexer(
+        inputCol="item_id",
+        outputCol="item_idx",
+        handleInvalid="skip"
+    )
+
+    df = user_indexer.fit(df).transform(df)
+    df = item_indexer.fit(df).transform(df)
+
+    # Cast to int (important for ML models)
+    df = df.withColumn("user_id", df["user_idx"].cast("int")) \
+           .withColumn("item_id", df["item_idx"].cast("int"))
+
+    # Drop temporary columns
+    df = df.drop("user_idx", "item_idx")
+
+    return df
+
 def run_encoding():
     spark = create_spark_session()
 
@@ -35,7 +66,8 @@ def run_encoding():
 
     df = spark.read.parquet(input_path)
 
-    df_encoded = encode_ids(spark, df)
+    #df_encoded = encode_ids(spark, df)
+    df_encoded = encode_ids_new(spark, df)
 
     df_encoded.write.mode("overwrite").parquet(output_path)
 
