@@ -8,26 +8,26 @@ from pyspark.sql.window import Window
 from pyspark.sql.window import Window
 from pyspark.sql.functions import row_number, rand, col
 
+from pyspark.sql.functions import rand
+
 def user_based_split(df, test_ratio=0.2):
 
-    print("🔀 Performing user-based split")
+    print("🔀 Performing user-based split (corrected)")
 
-    # ✅ Use user_id (NOT reviewerID)
-    window = Window.partitionBy("user_id").orderBy(rand(seed=42))
+    df = df.withColumn("rand", rand(seed=42))
 
+    # Ensure each user has at least 1 train sample
+    window = Window.partitionBy("user_id").orderBy(col("rand"))
     df = df.withColumn("row_num", row_number().over(window))
 
-    counts = df.groupBy("user_id").count()
+    # First interaction → always train
+    train_df = df.filter(
+        (col("rand") > test_ratio) | (col("row_num") == 1)
+    ).drop("rand", "row_num")
 
-    df = df.join(counts, "user_id")
-
-    df = df.withColumn(
-        "split",
-        (col("row_num") / col("count") > (1 - test_ratio))
-    )
-
-    train_df = df.filter(~col("split")).drop("row_num", "count", "split")
-    test_df = df.filter(col("split")).drop("row_num", "count", "split")
+    test_df = df.filter(
+        (col("rand") <= test_ratio) & (col("row_num") != 1)
+    ).drop("rand", "row_num")
 
     print(f"Train: {train_df.count()}, Test: {test_df.count()}")
 
